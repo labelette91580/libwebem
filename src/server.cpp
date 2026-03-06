@@ -122,6 +122,10 @@ void server_base::handle_stop() {
 	} catch (...) {
 		if (m_logger) m_logger->Log(LogLevel::Error, "[web:%s] exception occurred while closing acceptor", settings_.listening_port.c_str());
 	}
+	// Cancel any pending heartbeat timer so the Boost.Asio IOCP timer thread
+	// can exit cleanly when io_context_.stop() is called.  Without this the
+	// async_wait keeps the internal timer thread alive, causing a shutdown hang.
+	m_heartbeat_timer.cancel();
 	connection_manager_.stop_all();
 }
 
