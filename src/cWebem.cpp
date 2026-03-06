@@ -207,6 +207,19 @@ namespace http {
 		{
 			if (!handler)
 				return;
+			// If the session-cleaner io_context has already been stopped (e.g. because
+			// cWebem::Stop() stops it before myServer->stop() triggers connection teardown),
+			// posting to it would silently drop the task and leave the handler — and any
+			// resources it owns, like an encoder subscriber or a colorbar worker thread —
+			// alive until the io_context is destroyed.  Run Stop() inline in that case so
+			// the handler is always cleaned up before cWebem is torn down.
+			if (m_io_context.stopped())
+			{
+				if (m_logger)
+					m_logger->Debug(DebugCategory::WebServer, "WebSocket: io_context stopped, running handler cleanup inline");
+				try { handler->Stop(); } catch (...) {}
+				return;
+			}
 			if (m_logger)
 				m_logger->Debug(DebugCategory::WebServer, "WebSocket: scheduling async handler cleanup");
 			boost::asio::post(m_io_context, [handler = std::move(handler), logger = m_logger]() {
