@@ -505,11 +505,22 @@ namespace http {
 									auto factory = webem->GetWebsocketFactory(req_path);
 									if (factory)
 									{
+										// Capture weak_ptr instead of raw this so the writer
+										// lambdas safely no-op after the connection is destroyed.
+										// This prevents use-after-free when async handler cleanup
+										// runs after the connection has already been torn down.
+										std::weak_ptr<connection> weak_self = shared_from_this();
 										auto ws_handler = factory(
-										webem,
-										[this](const std::string& data) { WS_Write(data); },
-										[this](const std::string& data) { WS_WriteBinary(data); },
-										reply_.ws_session);
+											webem,
+											[weak_self](const std::string& data) {
+												if (auto self = weak_self.lock())
+													self->WS_Write(data);
+											},
+											[weak_self](const std::string& data) {
+												if (auto self = weak_self.lock())
+													self->WS_WriteBinary(data);
+											},
+											reply_.ws_session);
 										websocket_parser.SetHandler(ws_handler);
 										webem->RegisterWebsocketHandler(ws_handler);
 									}
